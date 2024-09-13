@@ -1,0 +1,192 @@
+version: "3.7"
+
+
+services:
+  api-ingest:
+    image: "api-ingest"
+    environment:
+      GITHUB_TOKEN_FILE: /run/secrets/gh_password
+    secrets:
+      - gh_password
+    ports:
+      - "80:80"
+    networks:
+      - github-streaming
+    command: /bin/bash -c 'python ./app/main.py'
+    depends_on:
+      # - kafka
+      elasticsearch:
+        condition: service_healthy
+        restart: true
+      kibana:
+        condition: service_healthy
+        restart: true
+
+
+
+  # Elasticsearch Docker Images: https://www.docker.elastic.co/
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.1
+    healthcheck:
+      test: curl -s http://elasticsearch:9200 >/dev/null || exit 1
+      interval: 5s
+      timeout: 3s
+      retries: 100
+    container_name: elasticsearch
+    environment:
+      - xpack.security.enabled=false
+      - discovery.type=single-node
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - github-streaming
+    volumes:
+      - elasticsearch-data17:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+      - 9300:9300
+
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:7.17.1
+    healthcheck:
+      test: bash kibana_hc.sh
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - 5601:5601
+    networks:
+      - github-streaming
+    volumes:
+      - ./kibana_config/kibana_hc.sh:/usr/share/kibana/kibana_hc.sh
+      - ./kibana_config/Kibana_objects_export.ndjson:/usr/share/kibana/Kibana_objects_export.ndjson
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+        restart: true
+
+volumes:
+  elasticsearch-data17:
+    driver: local
+
+
+  # zookeeper:
+  #   image: "bitnami/zookeeper:3.7.0-debian-10-r70"
+  #   ports:
+  #     - "2181:2181"
+  #   environment:
+  #     - ALLOW_ANONYMOUS_LOGIN=yes
+  #   networks:
+  #     - github-streaming
+
+  # kafka:
+  #   image: "bitnami/kafka:2.8.0-debian-10-r42"
+  #   ports:
+  #     - "9093:9093" #change to 9093 to access external from your windows host
+  #   environment:
+  #     - KAFKA_BROKER_ID=1
+  #     - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+  #     - ALLOW_PLAINTEXT_LISTENER=yes
+  #     - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CLIENT:PLAINTEXT,EXTERNAL:PLAINTEXT #add aditional listener for external
+  #     - KAFKA_CFG_LISTENERS=CLIENT://:9092,EXTERNAL://:9093 #9092 will be for other containers, 9093 for your windows client
+  #     - KAFKA_CFG_ADVERTISED_LISTENERS=CLIENT://kafka:9092,EXTERNAL://localhost:9093 #9092 will be for other containers, 9093 for your windows client
+  #     - KAFKA_INTER_BROKER_LISTENER_NAME=CLIENT
+  #   depends_on:
+  #     - zookeeper
+  #   networks:
+  #     - github-streaming
+
+  # spark:
+  #   image: 'jupyter/pyspark-notebook:spark-2'
+  #   ports:
+  #     - '8888:8888'
+  #     - "4040-4080:4040-4080"
+  #   volumes:
+  #     - ./ApacheSpark/:/home/jovyan/work
+  #   networks:
+  #     - github-streaming
+
+  # mongo:
+  #   container_name: mongo-dev
+  #   image: mongo:6.0-rc
+  #   volumes:
+  #     - ~/dockerdata/mongodb:/data/db
+  #   restart: on-failure
+  #   ports:
+  #     - "27017:27017"
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: root
+  #     MONGO_INITDB_ROOT_PASSWORD: example
+  #     MONGO_INITDB_DATABASE: auth
+  #   networks:
+  #     - github-streaming
+
+  # mongo-express:
+  #   image: mongo-express
+  #   restart: on-failure
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     ME_CONFIG_MONGODB_SERVER: mongo-dev
+  #     ME_CONFIG_MONGODB_ADMINUSERNAME: root
+  #     ME_CONFIG_MONGODB_ADMINPASSWORD: example
+  #     ME_CONFIG_BASICAUTH_USERNAME: admin
+  #     ME_CONFIG_BASICAUTH_PASSWORD: tribes
+  #   networks:
+  #     - github-streaming
+  #   depends_on:
+  #     - mongo
+
+#  # Elasticsearch Docker Images: https://www.docker.elastic.co/
+#   elasticsearch:
+#     image: docker.elastic.co/kibana/kibana:8.15.1
+#     container_name: elasticsearch
+#     environment:
+#       - xpack.security.enabled=false
+#       - discovery.type=single-node
+#     ulimits:
+#       memlock:
+#         soft: -1
+#         hard: -1
+#       nofile:
+#         soft: 65536
+#         hard: 65536
+#     cap_add:
+#       - IPC_LOCK
+#     # volumes:
+#     #   - elasticsearch-data17:/usr/share/elasticsearch/data
+#     ports:
+#       - 9200:9200
+#       - 9300:9300
+
+#   kibana:
+#     container_name: kibana
+#     image: docker.elastic.co/kibana/kibana:7.17.1
+#     environment:
+#       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+#     ports:
+#       - 5601:5601
+#     depends_on:
+#       - elasticsearch
+
+# volumes:
+#   elasticsearch-data17:
+#     driver: local
+
+secrets:
+  gh_password:
+    file: password.txt
+
+networks:
+  github-streaming:
+    driver: bridge
