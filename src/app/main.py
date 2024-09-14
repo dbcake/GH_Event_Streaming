@@ -113,8 +113,8 @@ def filter_data(row):
         'repo_name': row['repo']['name'], 
         'created_at': row['created_at']
     }
-    json_object = json.dumps(dict) 
-    return json_object
+    json_str = json.dumps(dict) 
+    return json_str
 
 
 def cont_fetch():
@@ -159,7 +159,9 @@ def get_paginated_data(number_of_pages=10, result_per_page=30):
         # print(num)
         page_result_num = 0
         for result in results:
-            data.append(filter_data(result))
+            json_str = filter_data(result)
+            data.append(json_str)
+            produce_kafka_string(json_str)
             page_result_num+=1
         all_result_num += page_result_num
         # print(page_result_num)
@@ -172,22 +174,23 @@ def get_paginated_data(number_of_pages=10, result_per_page=30):
     print (f"Records for run {run}: {all_result_num}")
     time_elapsed = time.time() - start_time
     log_info("fetch", "stopping", datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f000Z"), time_elapsed, all_result_num, run, "fetching ended")
-
+    #print(data)
     return data
 
+def produce_kafka_string(json_as_string):
+    # Create producer
+    producer = KafkaProducer(bootstrap_servers='kafka:9092',acks=1)
+    
+    # Write the string as bytes because Kafka needs it this way
+    producer.send('ingestion-topic', bytes(json_as_string, 'utf-8'))
+    producer.flush() 
 
 # cont_fetch()
 run = 0 
 while True:
-    print(f"Run: {run}")
-    print(f"Run: {run}", get_paginated_data())
+    print( f"Run: {run}")
+    #print( f"Run: {run}", json.dumps( ) )
+    get_paginated_data()
     run+=1
-    time.sleep(60)
 
-# def produce_kafka_string(json_as_string):
-#     # Create producer
-#     producer = KafkaProducer(bootstrap_servers='kafka:9092',acks=1)
-    
-#     # Write the string as bytes because Kafka needs it this way
-#     producer.send('ingestion-topic', bytes(json_as_string, 'utf-8'))
-#     producer.flush() 
+    time.sleep(60)
